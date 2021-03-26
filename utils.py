@@ -10,8 +10,8 @@ import copy
 # simulate flags without argparse
 class Flags():
     def __init__(self, 
-                 #env="rtfm:groups_simple_stationary-v0", # simplest env
-                 env="rtfm:groups-v0",
+                 env="rtfm:groups_simple_stationary-v0", # simplest env
+                 #env="rtfm:groups-v0",
                  height=6,
                  width=6,
                  partial_observability=False,
