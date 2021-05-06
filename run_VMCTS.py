@@ -19,19 +19,6 @@ import mcts
 import train
 from rtfm import featurizer as X
 
-# Full training cycle
-ucb_C = 1.0
-discount = 0.9 # try with smaller discount
-episode_length = 32
-max_actions = 5
-num_simulations = 50
-device = mcts.device
-n_episodes = 2000
-memory_size = 528
-batch_size = 32
-n_steps = 5
-tau = 0.5 # new_trg_params = (1-tau)*old_trg_params + tau*value_net_params
-
 
 
 parser = argparse.ArgumentParser(description='Value MCTS parser')
