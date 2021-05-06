@@ -51,6 +51,7 @@ def gen_PID():
     return ID
 
 def main():
+    start = time.time()
     # define them by the parser values
     training_params = dict(
         ucb_C = args.ucb_C,
@@ -166,7 +167,10 @@ def main():
             torch.save(d, experiment_path+'training_dict_%d'%(i+1))
             print("Saved checkpoint.")
 
-
+    end = time.time()
+    elapsed = (end-start)/60
+    print("Run took %.1f min."%elapsed)
+   
 
 
 if __name__ == "__main__":
