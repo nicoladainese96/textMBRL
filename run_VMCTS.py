@@ -34,6 +34,7 @@ parser.add_argument('--memory_size', type=int, help='Number of episodes stored i
 parser.add_argument('--batch_size', type=int, help='Number of samples used in a mini-batch for updates', default=32)
 parser.add_argument('--n_steps', type=int, help='Number of steps used for bootstrapping', default=5)
 parser.add_argument('--tau', type=float, help='Coefficient for exponential moving average update of the target network', default=0.5)
+parser.add_argument('--net_update_period', type=int, help='Number of episodes to play before every value network update', default=1)
 parser.add_argument('--target_update_period', type=int, help='Number of value network updates to do before every target update', default=8)
 parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
 # Paths
@@ -85,7 +86,7 @@ def main():
 
     # Training and optimization
     optimizer = torch.optim.Adam(value_net.parameters(), lr=args.lr)
-    gamma = 10**(-2/(args.n_episodes-1)) # decrease lr of 2 order of magnitude during training
+    gamma = 10**(-2/(args.n_episodes/args.net_update_period-1)) # decrease lr of 2 order of magnitude during training
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
     loss_fn = F.mse_loss
     rb = train.nStepsReplayBuffer(args.memory_size, args.discount)
@@ -124,16 +125,18 @@ def main():
 
         try:
             # update value network all the time
-            target_net.eval()
-            frames, targets = rb.get_batch(args.batch_size, args.n_steps, args.discount, target_net, device)
-            value_net.train()
-            loss = train.compute_update_v1(value_net, frames, targets, loss_fn, optimizer)
-            scheduler.step()
+            if (i+1)%args.net_update_period==0:
+                target_net.eval()
+                frames, targets = rb.get_batch(args.batch_size, args.n_steps, args.discount, target_net, device)
+                value_net.train()
+                loss = train.compute_update_v1(value_net, frames, targets, loss_fn, optimizer)
+                scheduler.step()
+                print("Loss: %.4f"%loss)
+                losses.append(loss)
             # update target network only from time to time
             if (i+1)%args.target_update_period==0:
                 train.update_target_net(target_net, value_net, args.tau)
-            print("Loss: %.4f"%loss)
-            losses.append(loss)
+            
 
         except:
             pass
