@@ -3,6 +3,7 @@ from rtfm import tasks # needed to make rtfm visible as Gym env
 from core import environment # env wrapper
 
 import numpy as np
+import matplotlib.pyplot as plt
 import gym
 import torch
 import copy
@@ -260,7 +261,7 @@ def get_optimal_actions(frame, object_ids, empty_id=170):
     # sometimes weird initial random conditions are found in which both items are placed on the agent 
     # but probably only the no_item remains... 
     if len(agent_pos)==0 or len(next_goal_pos)==0:
-        render_frame(frame, object_ids)
+        #render_frame(frame, object_ids)
         return [0] 
     
     empty_mask = (frame_name==empty_id)
@@ -379,3 +380,231 @@ def play_episode_optimal_policy(
         return total_reward, frame_lst
     else:
         return total_reward 
+
+
+def play_episode_optimal_policy_v1(
+    env,
+    episode_length,
+    object_ids,
+    render = False,
+    reset_if_done=True
+):
+
+    action_dict = {
+        0:"Stay",
+        1:"Up",
+        2:"Down",
+        3:"Left",
+        4:"Right"
+    }
+    A = len(env.env.action_space)
+    frame, valid_actions = env.reset()
+    if render:
+        env.render()
+    total_reward = 0
+    done = False
+    frame_lst = [frame]
+    action_lst = []
+    best_action_lst = []
+    for i in range(episode_length):
+        
+        best_actions = get_optimal_actions(frame, object_ids)
+        if render:
+            print("Best actions: ", [action_dict[a] for a in best_actions])
+        action = np.random.choice(best_actions)
+        action_lst.append(action)
+        best_actions_tensor = torch.tensor([1 if i in best_actions else 0 for i in range(A)]).view(1,-1)
+        best_action_lst.append(best_actions_tensor)
+        
+        frame, valid_actions, reward, done = env.step(action)
+        frame_lst.append(frame)
+        
+        if render:
+            env.render()
+        total_reward += reward
+        
+        if done:
+            if reset_if_done:
+                frame, valid_actions = env.reset()
+            else:
+                break
+    
+
+    return total_reward, frame_lst, action_lst, torch.cat(best_action_lst, axis=0)
+
+
+def play_episode_optimal_policy_v2(
+    env,
+    episode_length,
+    object_ids,
+    render = False,
+    reset_if_done=True
+):
+
+    action_dict = {
+        0:"Stay",
+        1:"Up",
+        2:"Down",
+        3:"Left",
+        4:"Right"
+    }
+    A = len(env.env.action_space)
+    frame, valid_actions = env.reset()
+    if render:
+        env.render()
+    total_reward = 0
+    done = False
+    frame_lst = [frame]
+    reward_lst = []
+    done_lst = []
+    action_lst = []
+    best_action_lst = []
+    for i in range(episode_length):
+        
+        best_actions = get_optimal_actions(frame, object_ids)
+        if render:
+            print("Best actions: ", [action_dict[a] for a in best_actions])
+        action = np.random.choice(best_actions)
+        action_lst.append(action)
+        best_actions_tensor = torch.tensor([1 if i in best_actions else 0 for i in range(A)]).view(1,-1)
+        best_action_lst.append(best_actions_tensor)
+        
+        frame, valid_actions, reward, done = env.step(action)
+        frame_lst.append(frame)
+        reward_lst.append(reward)
+        done_lst.append(done)
+        
+        if render:
+            env.render()
+        total_reward += reward
+        
+        if done:
+            if reset_if_done:
+                frame, valid_actions = env.reset()
+            else:
+                break
+    
+
+    return total_reward, frame_lst, reward_lst, done_lst, action_lst, torch.cat(best_action_lst, axis=0)
+
+
+# +
+def plot_losses(losses, window=20, ylabel=None):
+    plt.figure(figsize=(10,8))
+    plot_window_average(losses, window)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    if ylabel is None:
+        plt.ylabel("Policy net cross entropy loss", fontsize=16)
+    else:
+        plt.ylabel(ylabel, fontsize=16)
+    plt.legend()
+    plt.show()
+    
+def plot_entropies(entropies, window=20):
+    plt.figure(figsize=(10,8))
+    plot_window_average(entropies, window)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Policy net entropy", fontsize=16)
+    plt.legend()
+    plt.show()
+    
+def plot_rewards(total_rewards, window=20):
+    plt.figure(figsize=(10,8))
+    plot_window_average(total_rewards, window)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Average total reward in 32 steps", fontsize=16)
+    plt.legend()
+    plt.show()
+    
+def plot_action_optimality(perc_optimal_actions, window=20):
+    plt.figure(figsize=(10,8))
+    plot_window_average(perc_optimal_actions, window)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Fraction of optimal actions per trajectory", fontsize=16)
+    plt.legend()
+    plt.show()
+    
+def plot_window_average(y, window, label=None):
+    if window is None:
+        average_y = y
+    else:
+        average_y = np.array([np.mean(y[i-window:i]) for i in range(window, len(y))])
+        
+    if label is None:
+        plt.plot(np.arange(len(average_y)), average_y, label="Moving average over %d steps"%window)
+    else:
+        plt.plot(np.arange(len(average_y)), average_y, label=label)
+
+
+# -
+
+def get_problematic_traj(value_net, test_rb, test_size):
+    # Check number of problematic trajectories in the test set according to current pv_net
+    problematic_trajectories = []
+    for i in range(test_size):
+        # get single trajectory
+        frame_lst = test_rb.frame_buffer[i]
+        reward_lst = test_rb.reward_buffer[i]
+
+        # remove batch axis from frames
+        reshaped_frame_lst = {}
+        for k in frame_lst.keys():
+            shape = frame_lst[k].shape
+            reshaped_frame_lst[k] = frame_lst[k].reshape(-1,*shape[2:])
+
+        total_reward = np.sum(reward_lst)
+        if total_reward == 1:
+            value_net.eval()
+            with torch.no_grad():
+                #values = [value_net(f).cpu().squeeze() for f in reshaped_frame_lst]
+                values = list(value_net(reshaped_frame_lst).cpu().squeeze())
+
+            # check whether values are monotonically increasing or not (disregarding the terminal state, 
+            # because in that case we should sum a reward of 1)    
+            correct = True
+            if len(values) > 2:
+                for j in range(len(values)-2): # look at pairs (j,j+1), stop at one pair from the end
+                    if values[j] > values[j+1]:
+                        correct = False
+            if not correct:
+                problematic_trajectories.append((reshaped_frame_lst,values))
+    
+    frac_of_problematic_traj = len(problematic_trajectories)/test_size
+    print("Percentage of problematic trajectories: %.1f %%"%(frac_of_problematic_traj*100))
+    return frac_of_problematic_traj
+
+
+def get_problematic_traj_pv_net(pv_net, test_rb, test_size):
+    # Check number of problematic trajectories in the test set according to current pv_net
+    problematic_trajectories = []
+    for i in range(test_size):
+        # get single trajectory
+        frame_lst = test_rb.frame_buffer[i]
+        reward_lst = test_rb.reward_buffer[i]
+
+        # remove batch axis from frames
+        reshaped_frame_lst = {}
+        for k in frame_lst.keys():
+            shape = frame_lst[k].shape
+            reshaped_frame_lst[k] = frame_lst[k].reshape(-1,*shape[2:])
+
+        total_reward = np.sum(reward_lst)
+        if total_reward == 1:
+            pv_net.eval()
+            with torch.no_grad():
+                raw_values, _ = pv_net(reshaped_frame_lst)
+                values = list(raw_values.cpu().squeeze())
+
+            # check whether values are monotonically increasing or not (disregarding the terminal state, 
+            # because in that case we should sum a reward of 1)    
+            correct = True
+            if len(values) > 2:
+                for j in range(len(values)-2): # look at pairs (j,j+1), stop at one pair from the end
+                    if values[j] > values[j+1]:
+                        correct = False
+            if not correct:
+                problematic_trajectories.append((reshaped_frame_lst,values))
+    
+    frac_of_problematic_traj = len(problematic_trajectories)/test_size
+    print("Percentage of problematic trajectories: %.1f %%"%(frac_of_problematic_traj*100))
+    return frac_of_problematic_traj
