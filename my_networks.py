@@ -740,6 +740,104 @@ class DiscreteSupportPVNet(nn.Module):
         # (like if they were classes) 
         v_logits = self.value_mlp(z_flat)
         return v_logits
+    
+    
+class DiscreteSupportPVNet_v3(nn.Module):
+    def __init__(self, 
+                 gym_env,
+                 emb_dim=10,
+                 support_size=10,
+                 conv_channels=64,
+                 conv_layers=2,
+                 residual_layers=2,
+                 linear_features_in=128,
+                 linear_feature_hidden=128
+                ):
+        """
+        Use 2 1x1 convolutions before the residual layers.
+        """
+        super().__init__()
+        self.name_embedding = nn.Embedding(len(gym_env.vocab), emb_dim)
+        self.inv_embedding = nn.Embedding(len(gym_env.vocab), emb_dim)
+        self.support_size = support_size
+        
+        name_shape = gym_env.observation_space['name']
+        inv_shape = gym_env.observation_space['inv']
+        n_channels = (name_shape[2]*name_shape[3]+inv_shape[0])*emb_dim
+        
+        self.conv_net_layers = nn.ModuleList([
+            nn.Conv2d(n_channels, conv_channels, kernel_size=1), # 1x1 conv to mix inv and name channels
+            nn.ReLU()
+        ])
+        
+        for i in range(conv_layers-1):
+            self.conv_net_layers.append(nn.Conv2d(conv_channels, conv_channels, kernel_size=1))
+            self.conv_net_layers.append(nn.ReLU())
+        for i in range(residual_layers):
+            self.conv_net_layers.append(ResidualConv(conv_channels, conv_channels))
+        self.conv_net_layers.append(nn.Conv2d(conv_channels, linear_features_in, kernel_size=3, padding=1))
+
+        self.maxpool = nn.MaxPool2d(gym_env.observation_space['name'][1])
+
+        self.value_mlp = nn.Sequential(
+            nn.Linear(linear_features_in, linear_feature_hidden),
+            nn.ReLU(),
+            nn.Linear(linear_feature_hidden,support_size*2+1)
+        )
+        self.policy_mlp = nn.Sequential(
+            nn.Linear(linear_features_in,linear_feature_hidden),
+            nn.ReLU(),
+            nn.Linear(linear_feature_hidden,len(gym_env.action_space))
+        )
+        
+    def forward(self, frame, return_v_logits=False):
+        z_flat = self.encode(frame)
+        
+        ### Value head ###
+        v_logits = self.logits(frame, z_flat) # just apply value MLP
+        v = support_to_scalar_v1(v_logits, self.support_size) # softmax done inside here!
+        
+        ### Policy head ###
+        device = next(self.parameters()).device
+        logits = self.policy_mlp(z_flat)
+        action_mask = 1-frame['valid'].to(device)
+        probs = F.softmax(logits.masked_fill((action_mask).bool(), float('-inf')), dim=-1) 
+        
+        if return_v_logits:
+            return v_logits, probs
+        else:
+            return v, probs
+    
+    def encode(self, frame):
+        device = next(self.parameters()).device
+        
+        # Embed name (grid representation) and inv (inventory)
+        x = self.name_embedding(frame['name'].to(device))
+        inv = self.inv_embedding(frame['inv'].to(device))
+        
+        # Reshape both to (B,C,W,H) tensors to be concatenated together along C axis
+        s = x.shape
+        B, W, H = s[:3]
+        x = x.reshape(*s[:3],-1).permute(0, 3, 1, 2) # (B, C1, W, H)
+        inv = inv.reshape(B,-1,1,1)
+        inv = inv.expand(B,-1,W,H) # (B, C2, W, H)
+        z = torch.cat([x,inv], axis=1)
+        
+        # Process in convolutional layers
+        for layer in self.conv_net_layers:
+            z = layer(z)
+        # Summarize spatial dimensions with maxpool along (W,H) -> out_channels = in_features to MLP
+        z_flat = self.maxpool(z).view(B,-1)
+        return z_flat
+    
+    def logits(self, frame, z_flat=None):
+        """ Auxiliary funciton"""
+        if z_flat is None:
+            z_flat = self.encode(frame)
+        # Refine features with 1 hidden linear layer and then predict logits for all support values 
+        # (like if they were classes) 
+        v_logits = self.value_mlp(z_flat)
+        return v_logits
 
 
 def support_to_scalar_v1(probabilities, support_size, probs_in_input=False):
