@@ -702,10 +702,10 @@ def plot_value_stats(value_net, target_net, rb, batch_size, n_steps, device, n_p
     plt.show()
 
 
-def plot_value_stats_v2(value_net, target_net, rb, batch_size, n_steps, discount, device, n_peaks=10):
+def plot_value_stats_v2(value_net, target_net, rb, batch_size, n_steps, device, n_peaks=10):
     # Value vs target hist on a batch
     target_net.eval()
-    frames, targets, _, _ = rb.get_batch(batch_size, n_steps, discount, target_net, device) # using action-value buffer
+    frames, targets, _, _, _ = rb.get_batch(batch_size, n_steps, target_net, device) # using action-value buffer
     targets = targets.reshape(-1).cpu().numpy()
     with torch.no_grad():
         value_net.eval()
@@ -738,7 +738,7 @@ def plot_value_stats_v2(value_net, target_net, rb, batch_size, n_steps, discount
     ax[1,0].set_title('Distribution of the residuals', fontsize=16)
 
     # Boxplots of values grouped by targets
-    V_exact =[discount**i for i in range(n_steps)][::-1]
+    V_exact =[rb.discount**i for i in range(n_steps)][::-1]
     # Divide the pairs (target,value) based on the value of the target
     epsilon = 1e-3
     classes = []
@@ -1568,7 +1568,7 @@ class PolicyValueReplayBuffer:
         
         return frames, rewards, done, actions.unsqueeze(0), probs.unsqueeze(0) 
     
-    def get_batch(self, batch_size, n_steps, discount, target_net, device="cpu"):
+    def get_batch(self, batch_size, n_steps, target_net, device="cpu"):
         # Decide which indexes to sample
         id_range = len(self.frame_buffer)
         assert id_range >= batch_size, "Not enough samples stored to get this batch size"
@@ -1594,7 +1594,7 @@ class PolicyValueReplayBuffer:
             src_frames[k] = sampled_frames[k][:,:-1] # all but ast frame     
             
         # sampled_targets of shape (B*T,)
-        sampled_targets = self.compute_n_step_V_trg(n_steps, discount, sampled_rewards, sampled_done, 
+        sampled_targets = self.compute_n_step_V_trg(n_steps, self.discount, sampled_rewards, sampled_done, 
                                                     trg_frames, target_net, device)
         # Flatten also the src_frames
         reshaped_frames = {}

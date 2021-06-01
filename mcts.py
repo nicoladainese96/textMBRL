@@ -627,7 +627,7 @@ class PriorValueNode(Node):
         return probs
     
     def softmax_Q(self, T, discount):
-        Qs = torch.zeros(self.full_action_space) 
+        Qs = -torch.ones(self.full_action_space)*np.inf
         for action, child in self.children.items():
             Qs[action] = child.reward + discount*child.value()
         if T > 0:
