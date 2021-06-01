@@ -29,17 +29,17 @@ parser.add_argument('--episode_length', type=int, help='Length of trajectories. 
 parser.add_argument('--max_actions', type=int, help='Maximum number of random rollouts used in simulate mode for evaluating a leaf node in MCTS', default=20)
 parser.add_argument('--num_simulations', type=int, help='Number of searches for node in MCTS', default=50)
 parser.add_argument('--device', type=str, help='Device used by the value network (cuda or cpu)', default=mcts.device)
-parser.add_argument('--n_episodes', type=int, help='Number of episodes played during the run', default=4000)
+parser.add_argument('--n_episodes', type=int, help='Number of episodes played during the run', default=5000)
 parser.add_argument('--memory_size', type=int, help='Number of episodes stored in the replay buffer', default=1024)
 parser.add_argument('--batch_size', type=int, help='Number of samples used in a mini-batch for updates', default=32)
 parser.add_argument('--n_steps', type=int, help='Number of steps used for bootstrapping', default=5)
 parser.add_argument('--tau', type=float, help='Coefficient for exponential moving average update of the target network', default=0.5)
-# Agorithmic parameters
+# Algorithmic parameters
 parser.add_argument('--dirichlet_alpha', type=float, help='Alpha parameter of root Dirichlet noise', default=0.5)
 parser.add_argument('--exploration_fraction', type=float, help='Mixing parameter between policy net prior and Dirichlet noise', default=0.25)
 parser.add_argument('--temperature', type=float, help='Starting temperature used in softmax policy for Q values', default=1.)
-parser.add_argument('--full_cross_entropy', type=bool, help='If True, uses the full probability as a target for the cross-entropy loss', default=False)
-parser.add_argument('--entropy_bonus', type=bool, help='If True, adds the negative entropy of the policy (multiplied by a const.) to the policy loss', default=True)
+parser.add_argument('--full_cross_entropy', dest='full_cross_entropy', help='If True, uses the full probability as a target for the cross-entropy loss', default=False, action='store_true')
+parser.add_argument('--entropy_bonus', dest='entropy_bonus', help='If True, adds the negative entropy of the policy (multiplied by a const.) to the policy loss', default=False,  action='store_true')
 parser.add_argument('--entropy_weight', type=float, help='Weight that multiplies the entropy bonus, if used', default=1e-2)
 parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
 # Architecture parameters
@@ -67,6 +67,8 @@ def gen_PID():
 def main():
     start = time.time()
     # define them by the parser values
+    print("args.full_cross_entropy: ", args.full_cross_entropy)
+    print("args.entropy_bonus: ", args.entropy_bonus)
     training_params = dict(
         ucb_C = args.ucb_C,
         discount = args.discount, 
