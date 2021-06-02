@@ -8,4 +8,4 @@
 
 # email research-support@csc.fi for help
 module load pytorch
-python run_VMCTS.py $*
+python run_PVMCTS.py $*
