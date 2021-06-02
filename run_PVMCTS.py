@@ -42,6 +42,7 @@ parser.add_argument('--full_cross_entropy', dest='full_cross_entropy', help='If 
 parser.add_argument('--entropy_bonus', dest='entropy_bonus', help='If True, adds the negative entropy of the policy (multiplied by a const.) to the policy loss', default=False,  action='store_true')
 parser.add_argument('--entropy_weight', type=float, help='Weight that multiplies the entropy bonus, if used', default=1e-2)
 parser.add_argument('--lr', type=float, help='Learning rate', default=1e-3)
+parser.add_argument('--no_support_values', dest='discrete_support_values', help='If True, signals that the network is using a discrete support value head.', default=True,  action='store_false')
 # Architecture parameters
 parser.add_argument('--emb_dim', type=int, help='Number of dimensions in the embedding layers', default=10)
 parser.add_argument('--support_size', type=int, help='Number of support values in [0,1]. Full range is 2*support_values+1 intervals in [-1,1]', default=10)
@@ -69,6 +70,7 @@ def main():
     # define them by the parser values
     print("args.full_cross_entropy: ", args.full_cross_entropy)
     print("args.entropy_bonus: ", args.entropy_bonus)
+    print("args.discrete_support_values: ", args.discrete_support_values)
     training_params = dict(
         ucb_C = args.ucb_C,
         discount = args.discount, 
@@ -86,15 +88,16 @@ def main():
         temperature = args.temperature,
         full_cross_entropy = args.full_cross_entropy,
         entropy_bonus = args.entropy_bonus,
-        entropy_weight = args.entropy_weight
+        entropy_weight = args.entropy_weight,
+        discrete_support_values = args.discrete_support_values
     )
     
     device = args.device
     temperature = args.temperature
     
+    
     network_params = {
         "emb_dim":args.emb_dim,
-        "support_size":args.support_size,
         "conv_channels":args.conv_channels,
         "conv_layers":args.conv_layers,
         "residual_layers":args.residual_layers,
@@ -110,8 +113,14 @@ def main():
     object_ids = utils.get_object_ids_dict(game_simulator)
     
     # Networks
-    pv_net = mcts.DiscreteSupportPVNet_v3(gym_env, **network_params).to(device)
-    target_net = mcts.DiscreteSupportPVNet_v3(gym_env, **network_params).to(device)
+    if args.discrete_support_values:
+        network_params["support_size"] = args.support_size
+        pv_net = mcts.DiscreteSupportPVNet_v3(gym_env, **network_params).to(device)
+        target_net = mcts.DiscreteSupportPVNet_v3(gym_env, **network_params).to(device)
+    else:
+        pv_net = mcts.FixedDynamicsPVNet_v3(gym_env, **network_params).to(device)
+        target_net = mcts.FixedDynamicsPVNet_v3(gym_env, **network_params).to(device)
+        
     # Init target_net with same parameters of value_net
     for trg_params, params in zip(target_net.parameters(), pv_net.parameters()):
         trg_params.data.copy_(params.data)
@@ -181,7 +190,8 @@ def main():
                 optimizer,
                 args.full_cross_entropy,
                 args.entropy_bonus,
-                args.entropy_weight
+                args.entropy_weight,
+                args.discrete_support_values
             )
             loss, entropy, accuracy, policy_loss, value_loss = update_results
             scheduler.step()

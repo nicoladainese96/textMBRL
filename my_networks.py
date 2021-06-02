@@ -13,6 +13,7 @@ else:
 verbose = False
 vprint = print if verbose else lambda *args, **kwargs: None
 
+############################################################################################################################
 
 class FixedDynamicsValueNet(nn.Module):
     def __init__(self, 
@@ -57,6 +58,8 @@ class FixedDynamicsValueNet(nn.Module):
         v = self.value_mlp(z_flat)
         return v
 
+############################################################################################################################
+    
 class FixedDynamicsValueNet_v1(nn.Module):
     """
     W.r.t. FixedDynamicsValueNet introduces separate embeddings for name and inv
@@ -103,6 +106,8 @@ class FixedDynamicsValueNet_v1(nn.Module):
         z_flat = self.maxpool(z_conv).view(B,-1)
         v = self.value_mlp(z_flat)
         return v
+
+############################################################################################################################
 
 class FixedDynamicsPVNet(nn.Module):
     """
@@ -166,6 +171,8 @@ class FixedDynamicsPVNet(nn.Module):
         #print("probs: ", probs)
         return v, probs
 
+############################################################################################################################
+
 class ResidualConv(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         """
@@ -211,6 +218,8 @@ class ResidualConv(nn.Module):
         out = F.relu(res+skip_x)
         return out
 
+############################################################################################################################
+
 class FixedDynamicsValueNet_v2(nn.Module):
     def __init__(self, 
                  gym_env,
@@ -253,6 +262,8 @@ class FixedDynamicsValueNet_v2(nn.Module):
         z_flat = self.maxpool(z_conv).view(B,-1)
         v = self.value_mlp(z_flat)
         return v
+
+############################################################################################################################
 
 class FixedDynamicsValueNet_v3(nn.Module):
     def __init__(self, 
@@ -320,6 +331,7 @@ class FixedDynamicsValueNet_v3(nn.Module):
         v = self.value_mlp(z_flat)
         return v
 
+############################################################################################################################
 
 class FixedDynamicsPVNet_v2(nn.Module):
     def __init__(self, 
@@ -379,6 +391,83 @@ class FixedDynamicsPVNet_v2(nn.Module):
         #print("probs: ", probs)
         return v, probs
 
+############################################################################################################################
+
+class FixedDynamicsPVNet_v3(nn.Module):
+    def __init__(self, 
+                 gym_env,
+                 emb_dim=10,
+                 conv_channels=64,
+                 conv_layers=2,
+                 residual_layers=2,
+                 linear_features_in=128,
+                 linear_feature_hidden=128
+                ):
+        super().__init__()
+        self.name_embedding = nn.Embedding(len(gym_env.vocab), emb_dim)
+        self.inv_embedding = nn.Embedding(len(gym_env.vocab), emb_dim)
+        
+        name_shape = gym_env.observation_space['name']
+        inv_shape = gym_env.observation_space['inv']
+        n_channels = (name_shape[2]*name_shape[3]+inv_shape[0])*emb_dim
+        
+        self.conv_net_layers = nn.ModuleList([
+            nn.Conv2d(n_channels, conv_channels, kernel_size=1), # 1x1 conv to mix inv and name channels
+            nn.ReLU()
+        ])
+        
+        for i in range(conv_layers-1):
+            self.conv_net_layers.append(nn.Conv2d(conv_channels, conv_channels, kernel_size=1))
+            self.conv_net_layers.append(nn.ReLU())
+        for i in range(residual_layers):
+            self.conv_net_layers.append(ResidualConv(conv_channels, conv_channels))
+        self.conv_net_layers.append(nn.Conv2d(conv_channels, linear_features_in, kernel_size=3, padding=1))
+
+        self.maxpool = nn.MaxPool2d(gym_env.observation_space['name'][1])
+
+        self.value_mlp = nn.Sequential(
+            nn.Linear(linear_features_in, linear_feature_hidden),
+            nn.ReLU(),
+            nn.Linear(linear_feature_hidden,1)
+        )
+        self.policy_mlp = nn.Sequential(
+            nn.Linear(linear_features_in,linear_feature_hidden),
+            nn.ReLU(),
+            nn.Linear(linear_feature_hidden,len(gym_env.action_space))
+        )
+        
+    def forward(self, frame):
+        device = next(self.parameters()).device
+        
+        # Embed name (grid representation) and inv (inventory)
+        x = self.name_embedding(frame['name'].to(device))
+        inv = self.inv_embedding(frame['inv'].to(device))
+        
+        # Reshape both to (B,C,W,H) tensors to be concatenated together along C axis
+        s = x.shape
+        B, W, H = s[:3]
+        x = x.reshape(*s[:3],-1).permute(0, 3, 1, 2) # (B, C1, W, H)
+        inv = inv.reshape(B,-1,1,1)
+        inv = inv.expand(B,-1,W,H) # (B, C2, W, H)
+        z = torch.cat([x,inv], axis=1)
+        
+        # Process in convolutional layers
+        for layer in self.conv_net_layers:
+            z = layer(z)
+        # Summarize spatial dimensions with maxpool along (W,H) -> out_channels = in_features to MLP
+        z_flat = self.maxpool(z).view(B,-1)
+        
+        v = self.value_mlp(z_flat)
+        logits = self.policy_mlp(z_flat)
+        #print("logits: ", logits)
+        action_mask = 1-frame['valid'].to(device)
+        #print("action_mask: ", action_mask)
+        probs = F.softmax(logits.masked_fill((action_mask).bool(), float('-inf')), dim=-1) 
+        #print("probs: ", probs)
+        return v, probs
+
+############################################################################################################################
+
 class ValueMLP(nn.Module):
     def __init__(self, gym_env, emb_dim=10):
         super().__init__()
@@ -409,6 +498,8 @@ class ValueMLP(nn.Module):
         z = torch.cat([x,inv], axis=1)
         v = self.value_mlp(z)
         return v
+
+############################################################################################################################
 
 # Discrete support
 class DiscreteSupportValueNet(nn.Module):
@@ -461,6 +552,8 @@ class DiscreteSupportValueNet(nn.Module):
         v_logits = self.value_mlp(z_flat)
         return v_logits
 
+############################################################################################################################
+
 class DiscreteSupportValueNet_v1(nn.Module):
     def __init__(self, 
                  gym_env,
@@ -510,6 +603,8 @@ class DiscreteSupportValueNet_v1(nn.Module):
         z_flat = self.maxpool(z_conv).view(B,-1)
         v_logits = self.value_mlp(z_flat)
         return v_logits
+
+############################################################################################################################
 
 class DiscreteSupportValueNet_v2(nn.Module):
     def __init__(self, 
@@ -576,6 +671,7 @@ class DiscreteSupportValueNet_v2(nn.Module):
         v_logits = self.value_mlp(z_flat)
         return v_logits
 
+############################################################################################################################
 
 class DiscreteSupportValueNet_v3(nn.Module):
     def __init__(self, 
@@ -650,6 +746,7 @@ class DiscreteSupportValueNet_v3(nn.Module):
         v_logits = self.value_mlp(z_flat)
         return v_logits
 
+############################################################################################################################
 
 class DiscreteSupportPVNet(nn.Module):
     def __init__(self, 
@@ -741,7 +838,8 @@ class DiscreteSupportPVNet(nn.Module):
         v_logits = self.value_mlp(z_flat)
         return v_logits
     
-    
+############################################################################################################################
+
 class DiscreteSupportPVNet_v3(nn.Module):
     def __init__(self, 
                  gym_env,
@@ -839,6 +937,7 @@ class DiscreteSupportPVNet_v3(nn.Module):
         v_logits = self.value_mlp(z_flat)
         return v_logits
 
+############################################################################################################################
 
 def support_to_scalar_v1(probabilities, support_size, probs_in_input=False):
     """
@@ -877,6 +976,10 @@ def scalar_to_support_v1(x, support_size):
     indexes = indexes.masked_fill_(2 * support_size < indexes, 0.0)
     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
     return logits.view(b,-1)
+
+############################################################################################################################
+
+### Obsolete ### 
 
 def support_to_scalar(logits, support_size):
     """
@@ -924,8 +1027,9 @@ def scalar_to_support(x, support_size):
     logits.scatter_(2, indexes.long().unsqueeze(-1), prob.unsqueeze(-1))
     return logits
 
+############################################################################################################################
 
-# ### Relational modules
+### Relational modules - not used ###
 
 class PositionalEncoding(nn.Module):
     """
