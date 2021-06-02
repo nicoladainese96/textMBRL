@@ -53,7 +53,7 @@ parser.add_argument('--linear_features_in', type=int, help='Number of features i
 parser.add_argument('--linear_feature_hidden', type=int, help='Number of features used in the hidden layer of the value and policy MLPs', default=128)
 # Paths
 parser.add_argument('--ID', type=str, help='ID of the experiment', default=None)
-parser.add_argument('--save_dir', type=str, help='Path to save directory', default='save_dir')
+parser.add_argument('--save_dir', type=str, help='Path to save directory', default='./save_dir')
 parser.add_argument('--checkpoint_period', type=int, help='Every how many steps to save a checkpoint', default=500)
 
 
@@ -238,7 +238,7 @@ def main():
                 optimizer=optimizer,
             )
 
-            experiment_path ="./%s/%s/"%(args.save_dir, ID)
+            experiment_path ="%s/%s/"%(args.save_dir, ID)
             if not os.path.isdir(experiment_path):
                 os.mkdir(experiment_path)
             torch.save(d, experiment_path+'training_dict_%d'%(i+1))
