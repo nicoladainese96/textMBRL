@@ -608,3 +608,139 @@ def get_problematic_traj_pv_net(pv_net, test_rb, test_size):
     frac_of_problematic_traj = len(problematic_trajectories)/test_size
     print("Percentage of problematic trajectories: %.1f %%"%(frac_of_problematic_traj*100))
     return frac_of_problematic_traj
+
+
+def plot_total_reward_runs(list_of_exp_dictionaries, optimal_reward_mean, optimal_reward_std, title, window=100):
+    # Plot reward history of each run together with a legend to identify them and an horizontal line 
+    # (+ a confidence region) for the reward obtained by the optimal policy
+
+    plt.figure(figsize=(12,10))
+    for i,d in enumerate(list_of_exp_dictionaries):
+        total_rewards = d["total_rewards"]
+        average_rewards = np.array([np.mean(total_rewards[i-window:i]) for i in range(window, len(total_rewards))])
+        T = d["training_params"]["temperature"]
+        entropy_bonus = d["training_params"]["entropy_bonus"]
+        full_cross_ent = d["training_params"]["full_cross_entropy"]
+        if T==0:
+            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        else:
+            label = "Policy: softmaxQ(%.1f) \nEntropy bonus: %s \nFull cross-entropy: %s"%(T,entropy_bonus,full_cross_ent)
+        plt.plot(np.arange(len(average_rewards)), average_rewards, label=label)
+    plt.hlines(optimal_reward_mean, 0, len(average_rewards), linestyles="dashed", 
+               label="Avg reward (optimal): %.1f"%optimal_reward_mean)
+    plt.fill_between(np.arange(len(average_rewards)), 
+                     optimal_reward_mean-optimal_reward_std/np.sqrt(window), 
+                     optimal_reward_mean+optimal_reward_std/np.sqrt(window),
+                     alpha=0.5)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Total reward in 32 steps\n (moving window %s)"%window, fontsize=16)
+    plt.title("Total reward\n"+title, fontsize=16)
+    plt.legend(fontsize=13)
+    plt.show()
+    
+def plot_total_loss_runs(list_of_exp_dictionaries, title, window=100):
+    plt.figure(figsize=(12,10))
+    for i,d in enumerate(list_of_exp_dictionaries):
+        losses = d["losses"]
+        average_losses = np.array([np.mean(losses[i-window:i]) for i in range(window, len(losses))])
+        T = d["training_params"]["temperature"]
+        entropy_bonus = d["training_params"]["entropy_bonus"]
+        full_cross_ent = d["training_params"]["full_cross_entropy"]
+        if T==0:
+            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        else:
+            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        plt.plot(np.arange(len(average_losses)), average_losses, label=label)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Policy + value loss", fontsize=16)
+    plt.title("Total loss\n"+title, fontsize=16)
+    plt.legend(fontsize=13)
+    plt.show()
+    
+def plot_policy_loss_runs(list_of_exp_dictionaries, title, window=100):
+    plt.figure(figsize=(12,10))
+    for i,d in enumerate(list_of_exp_dictionaries):
+        losses = d["policy_losses"]
+        average_losses = np.array([np.mean(losses[i-window:i]) for i in range(window, len(losses))])
+        T = d["training_params"]["temperature"]
+        entropy_bonus = d["training_params"]["entropy_bonus"]
+        full_cross_ent = d["training_params"]["full_cross_entropy"]
+        if T==0:
+            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        else:
+            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        plt.plot(np.arange(len(average_losses)), average_losses, label=label)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Policy loss (cross entropy)", fontsize=16)
+    plt.title("Policy loss\n"+title, fontsize=16)
+    plt.legend(fontsize=13)
+    plt.show()
+    
+def plot_policy_entropy_runs(list_of_exp_dictionaries, title, window=100):
+    plt.figure(figsize=(12,10))
+    for i,d in enumerate(list_of_exp_dictionaries):
+        losses = d["entropies"]
+        average_losses = np.array([np.mean(losses[i-window:i]) for i in range(window, len(losses))])
+        T = d["training_params"]["temperature"]
+        entropy_bonus = d["training_params"]["entropy_bonus"]
+        full_cross_ent = d["training_params"]["full_cross_entropy"]
+        if T==0:
+            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        else:
+            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        plt.plot(np.arange(len(average_losses)), average_losses, label=label)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Policy entropy", fontsize=16)
+    plt.title("Policy entropy\n"+title, fontsize=16)
+    plt.legend(fontsize=13)
+    plt.show()
+    
+def plot_value_loss_runs(list_of_exp_dictionaries, title, window=100):
+    plt.figure(figsize=(12,10))
+    for i,d in enumerate(list_of_exp_dictionaries):
+        losses = d["value_losses"]
+        average_losses = np.array([np.mean(losses[i-window:i]) for i in range(window, len(losses))])
+        T = d["training_params"]["temperature"]
+        entropy_bonus = d["training_params"]["entropy_bonus"]
+        full_cross_ent = d["training_params"]["full_cross_entropy"]
+        if T==0:
+            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        else:
+            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        plt.plot(np.arange(len(average_losses)), average_losses, label=label)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Value loss (cross entropy with discrete support)", fontsize=16)
+    plt.title("Value loss\n"+title, fontsize=16)
+    plt.legend(fontsize=13)
+    plt.show()
+    
+def plot_accuracy_runs(list_of_exp_dictionaries, title, window=100):
+    plt.figure(figsize=(12,10))
+    for i,d in enumerate(list_of_exp_dictionaries):
+        losses = d["accuracies"]
+        average_losses = np.array([np.mean(losses[i-window:i]) for i in range(window, len(losses))])
+        T = d["training_params"]["temperature"]
+        entropy_bonus = d["training_params"]["entropy_bonus"]
+        full_cross_ent = d["training_params"]["full_cross_entropy"]
+        if T==0:
+            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        else:
+            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+        plt.plot(np.arange(len(average_losses)), average_losses, label=label)
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Percentage of optimal actions", fontsize=16)
+    plt.title("MCTS policy accuracy\n"+title, fontsize=16)
+    plt.legend(fontsize=13)
+    plt.show()
+    
+    
+def plot_analysis_runs(list_of_exp_dictionaries, optimal_reward_mean, optimal_reward_std, title, window=100):
+    plot_total_reward_runs(list_of_exp_dictionaries, optimal_reward_mean, optimal_reward_std, title, window)
+    plot_total_loss_runs(list_of_exp_dictionaries, title, window)
+    plot_policy_loss_runs(list_of_exp_dictionaries, title, window)
+    plot_policy_entropy_runs(list_of_exp_dictionaries, title, window)
+    plot_value_loss_runs(list_of_exp_dictionaries, title, window)
+    plot_accuracy_runs(list_of_exp_dictionaries, title, window)
+    
+    
+    
