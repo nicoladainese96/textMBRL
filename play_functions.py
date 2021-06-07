@@ -2,7 +2,8 @@
 import mcts
 import utils
 import torch
-
+import numpy as np
+from matplotlib import pyplot as plt
 ############################################################################################################################
 
 def show_root_summary(root, discount):
@@ -533,6 +534,134 @@ def play_episode_policy_value_net_v1(
         if done:
             break
     return total_reward, frame_lst, reward_lst, done_lst, action_is_optimal
+
+############################################################################################################################
+
+def show_policy_summary(pv_net, frame, root, discount, mcts_action, best_actions):
+    """
+    TO EDIT.
+    """
+    action_dict = {
+        0:"Stay",
+        1:"Up",
+        2:"Down",
+        3:"Left",
+        4:"Right"
+    }
+    with torch.no_grad():
+        v, prior = pv_net(frame)
+        prior = prior.cpu().numpy().flatten()
+        
+    for action, child in root.children.items():
+        Q =  child.reward + discount*child.value()
+        visits = child.visit_count
+        print("Action ", action_dict[action], ": Prior=%.3f - Q-value=%.3f - Visit counts=%d"%(prior[action],Q,visits))
+    
+    best_prior = prior.argmax()
+    print("Action with best prior: ", best_prior, "({})".format(action_dict[best_prior]))
+    print("Action selected from MCTS: ", mcts_action, "({})".format(action_dict[mcts_action]))
+    print("Best actions: ", best_actions, [action_dict[a] for a in best_actions])
+    return best_prior
+    
+############################################################################################################################
+
+def play_episode_policy_value_net_v2(
+    pv_net,
+    env,
+    episode_length,
+    ucb_C,
+    discount,
+    max_actions,
+    num_simulations,
+    object_ids,
+    mode="simulate",
+    dir_noise=False,
+    render = False,
+    debug_render=False
+):
+    """
+    Plays an episode with a policy and value MCTS. 
+    Starts building the tree from the sub-tree of the root's child node that has been selected at the previous step.
+    
+    If mode='simulate', it's identical to a policy MCTS with MC rollout evaluations, if mode='predict', the value network 
+    is used to estimate the value of the leaf nodes (instead of a MC rollout).
+    
+    Chooses the best action as the one with highest Q-value according to the MCTS step and actually it's not returning
+    any signal on which to train the policy (probably I used this to test a policy trained in a supervised fashion to
+    predict the optimal actions given by a hard-coded policy; value net is not trained, thus this shoudl be used only
+    in 'simulate' mode.
+    """
+    action_dict = {
+        0:"Stay",
+        1:"Up",
+        2:"Down",
+        3:"Left",
+        4:"Right"
+    }
+    frame, valid_actions = env.reset()
+    if render:
+        env.render()
+    total_reward = 0
+    done = False
+    new_root = None
+    # variables used for training of value net
+    frame_lst = [frame]
+    reward_lst = []
+    done_lst = []
+    action_is_optimal = []
+    if render:
+        prior_is_optimal = []
+    for i in range(episode_length):
+        tree = mcts.PolicyValueMCTS(
+                             frame, 
+                             env, 
+                             valid_actions, 
+                             ucb_C, 
+                             discount, 
+                             max_actions, 
+                             pv_net,
+                             render=debug_render, 
+                             root=new_root
+                             )
+        #print("Performing MCTS step")
+        root, info = tree.run(num_simulations, mode=mode, dir_noise=dir_noise)
+        #show_root_summary(root, discount)
+        #print("Tree info: ", info)
+        action = root.best_action(discount)
+        best_actions = utils.get_optimal_actions(frame, object_ids)
+        if render:
+            #print("probs from MCTS: ", probs)
+            best_prior = show_policy_summary(pv_net, frame, root, discount, action, best_actions)
+            
+            if best_prior in best_actions:
+                prior_is_optimal.append(True)
+            else:
+                prior_is_optimal.append(False)
+
+        # Evaluate chosen action against optimal policy
+        if action in best_actions:
+            action_is_optimal.append(True)
+        else:
+            action_is_optimal.append(False)
+            
+        new_root = tree.get_subtree(action)
+        frame, valid_actions, reward, done = env.step(action)
+        
+        frame_lst.append(frame)
+        reward_lst.append(reward)
+        done_lst.append(done)
+        
+        if render:
+            env.render()
+            print("Reward received: ", reward)
+            print("Done: ", done)
+        total_reward += reward
+        if done:
+            break
+    if render:
+        return total_reward, frame_lst, reward_lst, done_lst, action_is_optimal, prior_is_optimal
+    else:
+        return total_reward, frame_lst, reward_lst, done_lst, action_is_optimal
 
 ############################################################################################################################
 
