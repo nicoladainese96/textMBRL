@@ -227,9 +227,14 @@ def compute_PV_net_update(
         policy_loss = F.nll_loss(log_probs, target_actions) # cross-entropy averaged over batch dim
     
     entropy = -(probs*log_probs).sum(axis=1).mean()
+    # DEBUG
+    #print("entropy_bonus: ", entropy_bonus)
+    #print("entropy: ", entropy)
+    #print("policy_loss (before bonus): ", policy_loss)
     if entropy_bonus:
         policy_loss = policy_loss - h*entropy # negative entropy so that when minimizing entropy increases
-        
+    #print("policy_loss (after bonus): ", policy_loss)
+    
     ### Update ###
     loss = value_loss + policy_loss
     optimizer.zero_grad()

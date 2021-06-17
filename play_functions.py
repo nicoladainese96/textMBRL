@@ -991,3 +991,124 @@ def play_rollout_policy_value_net_softQ(
 
 
     return total_reward, frame_lst, reward_lst, done_lst, action_lst, torch.cat(best_action_lst, axis=0), probs_lst
+
+############################################################################################################################
+
+def play_rollout_policy_value_net_softQ_v1(
+    pv_net,
+    env,
+    episode_length,
+    ucb_C,
+    discount,
+    max_actions,
+    num_simulations,
+    object_ids,
+    dirichlet_alpha, 
+    exploration_fraction,
+    temperature,
+    mode="simulate",
+    ucb_method="p-UCT-old",
+    render=False,
+    debug_render=False,
+):
+    """
+    Plays a rolllout with a policy and value MCTS. 
+    Starts building the tree from the sub-tree of the root's child node that has been selected at the previous step.
+    
+    If mode='simulate', it's identical to a policy MCTS with MC rollout evaluations, if mode='predict', the value network 
+    is used to estimate the value of the leaf nodes (instead of a MC rollout).
+    
+    Samples the next action based on the Q-values of the root node's children and returns both the MCTS policy and the list of 
+    sampled actions as possible targets with which to train the policy network.
+    
+    Formula used for MCTS policy (softmax of Q-values with temperature):
+    
+    p(a) = exp{Q(a)/T} / \sum_b exp{Q(b)/T}
+
+    Note: the softmax function with T=0 is the argmax function.
+    
+    This function is also mixing a prior sampled from a Dirichlet distribution (with parameters dirichlet_alpha for each 
+    possible action) to the prior of the root node's children, in order to increase exploration at the base of the tree 
+    even in cases where the policy is almost deterministic. The mixture coefficient between the prior and the categorical 
+    distribution sampled by the Dirichelt distribution is the exploration_fraction, such that:
+    
+    p(a) = (1-exploration_fraction) Prior(a) + exploration_fraction Dir(a)
+    
+    """
+    
+    A = len(env.env.action_space)
+    action_dict = {
+        0:"Stay",
+        1:"Up",
+        2:"Down",
+        3:"Left",
+        4:"Right"
+    }
+    frame, valid_actions = env.reset()
+    if render:
+        env.render()
+    total_reward = 0
+    done = False
+    new_root = None
+    # variables used for training of value net
+    frame_lst = [frame]
+    reward_lst = []
+    done_lst = []
+    action_lst = []
+    best_action_lst = []
+    probs_lst = []
+    
+    for i in range(episode_length):
+        tree = mcts.PV_MCTS(
+                             frame, 
+                             env, 
+                             valid_actions, 
+                             ucb_C, 
+                             discount, 
+                             max_actions, 
+                             pv_net,
+                             render=debug_render, 
+                             root=new_root,
+                             ucb_method=ucb_method
+            
+                             )
+        root, info = tree.run(num_simulations, 
+                              mode=mode, 
+                              dir_noise=True, 
+                              dirichlet_alpha=dirichlet_alpha, 
+                              exploration_fraction=exploration_fraction
+                             )
+        
+        #action = root.best_action(discount)
+        action, probs = root.softmax_Q(temperature, discount)
+        action_lst.append(action)
+        probs_lst.append(probs)
+        
+        if render:
+            show_root_summary(root, discount)
+            print("Action selected from MCTS: ", action, "({})".format(action_dict[action]))
+        best_actions = utils.get_optimal_actions(frame, object_ids)
+        best_actions_tensor = torch.tensor([1 if i in best_actions else 0 for i in range(A)]).view(1,-1)
+        best_action_lst.append(best_actions_tensor)
+        
+        new_root = tree.get_subtree(action)
+        frame, valid_actions, reward, done = env.step(action)
+        
+        frame_lst.append(frame)
+        reward_lst.append(reward)
+        done_lst.append(done)
+        
+        if render:
+            env.render()
+        total_reward += reward
+        
+        if done:
+            frame, valid_actions = env.reset()
+            if render:
+                print("\nNew episode begins.")
+                env.render()
+            done = False
+            new_root = None
+
+
+    return total_reward, frame_lst, reward_lst, done_lst, action_lst, torch.cat(best_action_lst, axis=0), probs_lst

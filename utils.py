@@ -622,9 +622,9 @@ def plot_total_reward_runs(list_of_exp_dictionaries, optimal_reward_mean, optima
         entropy_bonus = d["training_params"]["entropy_bonus"]
         full_cross_ent = d["training_params"]["full_cross_entropy"]
         if T==0:
-            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "argmaxQ - Ent. bonus: %s - Full CE: %s"%(entropy_bonus,full_cross_ent)
         else:
-            label = "Policy: softmaxQ(%.1f) \nEntropy bonus: %s \nFull cross-entropy: %s"%(T,entropy_bonus,full_cross_ent)
+            label = "softmaxQ(%.1f) - Ent. bonus: %s - Full CE: %s"%(T,entropy_bonus,full_cross_ent)
         plt.plot(np.arange(len(average_rewards)), average_rewards, label=label)
     plt.hlines(optimal_reward_mean, 0, len(average_rewards), linestyles="dashed", 
                label="Avg reward (optimal): %.1f"%optimal_reward_mean)
@@ -647,9 +647,9 @@ def plot_total_loss_runs(list_of_exp_dictionaries, title, window=100):
         entropy_bonus = d["training_params"]["entropy_bonus"]
         full_cross_ent = d["training_params"]["full_cross_entropy"]
         if T==0:
-            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "argmaxQ - Ent. bonus: %s - Full CE: %s"%(entropy_bonus,full_cross_ent)
         else:
-            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "softmaxQ(%.1f) - Ent. bonus: %s - Full CE: %s"%(T,entropy_bonus,full_cross_ent)
         plt.plot(np.arange(len(average_losses)), average_losses, label=label)
     plt.xlabel("Number of optimizer steps", fontsize=16)
     plt.ylabel("Policy + value loss", fontsize=16)
@@ -666,9 +666,9 @@ def plot_policy_loss_runs(list_of_exp_dictionaries, title, window=100):
         entropy_bonus = d["training_params"]["entropy_bonus"]
         full_cross_ent = d["training_params"]["full_cross_entropy"]
         if T==0:
-            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "argmaxQ - Ent. bonus: %s - Full CE: %s"%(entropy_bonus,full_cross_ent)
         else:
-            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "softmaxQ(%.1f) - Ent. bonus: %s - Full CE: %s"%(T,entropy_bonus,full_cross_ent)
         plt.plot(np.arange(len(average_losses)), average_losses, label=label)
     plt.xlabel("Number of optimizer steps", fontsize=16)
     plt.ylabel("Policy loss (cross entropy)", fontsize=16)
@@ -685,9 +685,9 @@ def plot_policy_entropy_runs(list_of_exp_dictionaries, title, window=100):
         entropy_bonus = d["training_params"]["entropy_bonus"]
         full_cross_ent = d["training_params"]["full_cross_entropy"]
         if T==0:
-            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "argmaxQ - Ent. bonus: %s - Full CE: %s"%(entropy_bonus,full_cross_ent)
         else:
-            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "softmaxQ(%.1f) - Ent. bonus: %s - Full CE: %s"%(T,entropy_bonus,full_cross_ent)
         plt.plot(np.arange(len(average_losses)), average_losses, label=label)
     plt.xlabel("Number of optimizer steps", fontsize=16)
     plt.ylabel("Policy entropy", fontsize=16)
@@ -704,9 +704,9 @@ def plot_value_loss_runs(list_of_exp_dictionaries, title, window=100):
         entropy_bonus = d["training_params"]["entropy_bonus"]
         full_cross_ent = d["training_params"]["full_cross_entropy"]
         if T==0:
-            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "argmaxQ - Ent. bonus: %s - Full CE: %s"%(entropy_bonus,full_cross_ent)
         else:
-            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "softmaxQ(%.1f) - Ent. bonus: %s - Full CE: %s"%(T,entropy_bonus,full_cross_ent)
         plt.plot(np.arange(len(average_losses)), average_losses, label=label)
     plt.xlabel("Number of optimizer steps", fontsize=16)
     plt.ylabel("Value loss (cross entropy with discrete support)", fontsize=16)
@@ -723,9 +723,9 @@ def plot_accuracy_runs(list_of_exp_dictionaries, title, window=100):
         entropy_bonus = d["training_params"]["entropy_bonus"]
         full_cross_ent = d["training_params"]["full_cross_entropy"]
         if T==0:
-            label = "Policy: argmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "argmaxQ - Ent. bonus: %s - Full CE: %s"%(entropy_bonus,full_cross_ent)
         else:
-            label = "Policy: softmaxQ \nEntropy bonus: %s \nFull cross-entropy: %s"%(entropy_bonus,full_cross_ent)
+            label = "softmaxQ(%.1f) - Ent. bonus: %s - Full CE: %s"%(T,entropy_bonus,full_cross_ent)
         plt.plot(np.arange(len(average_losses)), average_losses, label=label)
     plt.xlabel("Number of optimizer steps", fontsize=16)
     plt.ylabel("Percentage of optimal actions", fontsize=16)
