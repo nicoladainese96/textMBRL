@@ -11,7 +11,7 @@ import time
 from rtfm import featurizer as X
 from my_networks import *
 
-verbose = False
+verbose = True
 vprint = print if verbose else lambda *args, **kwargs: None
 
 if torch.cuda.is_available():
@@ -292,6 +292,15 @@ class Node:
         best_actions = actions[mask]
         return np.random.choice(best_actions)
     
+    def get_Q_values(self, discount):
+        Qvalues = []
+        for action, child in self.children.items():
+            Qvalues.append(child.reward + discount*child.value())
+        Qvalues = np.array(Qvalues)
+        return Qvalues
+    
+    
+            
     def highest_visit_count(self):
         best_action = None
         highest_count = 0
@@ -618,28 +627,9 @@ class PriorValueNode(Node):
             for action in valid_actions:
                 self.children[action] = PriorValueNode(priors[action])
         self.simulator_dict = simulator.save_state_dict()
-        
-    def get_children_probs(self, T):
-        """
-        Use formula p(a) = N(a)^{1/T} / \sum_b N(b)^{1/T} to get the probabilities 
-        of selecting the various actions.
-        """
-        
-        Ns = np.zeros(self.full_action_space) # check this
-        for action, child in self.children.items():
-            Ns[action] = child.visit_count
-        
-        #print("Ns: ", Ns)
-        scores = Ns**(1./T)
-        #print("scores: ", scores)
-        probs = scores/scores.sum()
-        #print("probs: ", probs)
-        return probs
     
     def softmax_Q(self, T, discount):
-        Qs = -torch.ones(self.full_action_space)*np.inf
-        for action, child in self.children.items():
-            Qs[action] = child.reward + discount*child.value()
+        Qs = self.get_Q_values(discount)
         if T > 0:
             probs = F.softmax(Qs/T, dim=0)
         elif T==0:
@@ -649,6 +639,28 @@ class PriorValueNode(Node):
             
         sampled_action = torch.multinomial(probs, 1).item()
         return sampled_action, probs.cpu().numpy()
+    
+    def get_Q_values(self, discount):
+        Qs = -torch.ones(self.full_action_space)*np.inf
+        for action, child in self.children.items():
+            Qs[action] = child.reward + discount*child.value()
+        return Qs
+    
+    def get_children_visit_counts(self):
+        Ns = np.zeros(self.full_action_space) # check this
+        for action, child in self.children.items():
+            Ns[action] = child.visit_count
+        return Ns
+    
+    def get_children_probs(self, T):
+        """
+        Use formula p(a) = N(a)^{1/T} / \sum_b N(b)^{1/T} to get the probabilities 
+        of selecting the various actions.
+        """
+        Ns = self.get_children_visit_counts()
+        scores = Ns**(1./T)
+        probs = scores/scores.sum()
+        return probs
     
     def sample_child(self, temperature):
         probs = self.get_children_probs(temperature)
@@ -956,12 +968,13 @@ class PV_MCTS(PolicyValueMCTS):
             ("ucb method not recognized, should be one of: ", possible_ucb_methods)
         self.ucb_method = ucb_method
         
-    def run(self, num_simulations, mode="simulate", dir_noise=False, dirichlet_alpha=1.0, exploration_fraction=0.25):
+    def run(self, num_simulations, mode="simulate", dir_noise=False, dirichlet_alpha=1.0, exploration_fraction=0.25, default_Q=0):
         """
         Runs num_simulations searches starting from the root node corresponding to the internal
         state of the simulator given during initialization.
         Returns the root node and an extra_info dictionary
         """
+        self.default_Q = default_Q
         if self.root is None or self.root.visit_count==0:
             self.root = PVNode() 
             
@@ -1077,7 +1090,7 @@ class PV_MCTS(PolicyValueMCTS):
             # Mean value Q
             value_term = child.reward + self.discount*child.value() 
         else:
-            value_term = 0
+            value_term = self.default_Q # just trying
 
         return value_term + exploration_term, value_term, exploration_term
     
@@ -1091,7 +1104,7 @@ class PV_MCTS(PolicyValueMCTS):
             # Mean value Q
             value_term = child.reward + self.discount*child.value() 
         else:
-            value_term = 0
+            value_term = self.default_Q # just trying
 
         return value_term + exploration_term, value_term, exploration_term
     
@@ -1117,6 +1130,6 @@ class PV_MCTS(PolicyValueMCTS):
             # Mean value Q
             value_term = child.reward + self.discount*child.value() 
         else:
-            value_term = 1 # max payoff
+            value_term = self.default_Q # max payoff
 
         return value_term + exploration_term, value_term, exploration_term

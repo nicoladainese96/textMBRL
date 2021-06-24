@@ -23,6 +23,7 @@ from rtfm import featurizer as X
 
 parser = argparse.ArgumentParser(description='Policy and Value MCTS parser')
 # Game arguments
+parser.add_argument('--game_name', type=str, help='Name of the rtfm environment to use, e.g. groups_simple_stationary', default="groups_simple_stationary")
 parser.add_argument('--ucb_C', type=float, help='Exploration constant in UBC formula', default=1.0)
 parser.add_argument('--discount', type=float, help='Discount factor for future rewards', default=0.9)
 parser.add_argument('--episode_length', type=int, help='Length of trajectories. Restarts the game if end is reached before time', default=32)
@@ -118,7 +119,7 @@ def main():
     }
     
     # Environment and simulator 
-    flags = utils.Flags(env="rtfm:groups_simple_stationary-v0")
+    flags = utils.Flags(env="rtfm:%s-v0"%args.game_name)
     gym_env = utils.create_env(flags)
     featurizer = X.Render()
     game_simulator = mcts.FullTrueSimulator(gym_env, featurizer)
