@@ -8,4 +8,7 @@
 
 # email research-support@csc.fi for help
 module load pytorch
-python run_VMCTS.py $*
+cd ~/RTFM
+pip install --user -e .
+cd ~/textMBRL
+python run_PVMCTS.py $*
