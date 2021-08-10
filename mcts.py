@@ -20,7 +20,7 @@ else:
     device = "cpu"
 print("Using device "+device)
 
-### Standard MCTS ###
+# ## Standard MCTS ###
 
 class MCTS():
     def __init__(self, 
@@ -236,8 +236,7 @@ class MCTS():
             node.visit_count += 1
             value = node.reward + self.discount*value
 
-############################################################################################################################
-            
+""
 class Node:
     def __init__(self):
         self.visit_count = 0
@@ -316,8 +315,7 @@ class Node:
         else:
             raise Exception("Node simulator not initialized yet.")
 
-############################################################################################################################
-
+""
 class TrueSimulator():
     """
     Returns only valid actions, reward and done signal from env.step() - no state is returned
@@ -350,8 +348,7 @@ class TrueSimulator():
     def load_state_dict(self, d):
         self.env.load_state_dict(d)
 
-############################################################################################################################
-
+""
 ### Value-based MCTS ###
 class FullTrueSimulator():
     """
@@ -396,8 +393,7 @@ class FullTrueSimulator():
     def load_state_dict(self, d):
         self.env.load_state_dict(d)
 
-############################################################################################################################
-
+""
 class ValueNode(Node):
     def __init__(self):
         super().__init__()
@@ -416,8 +412,7 @@ class ValueNode(Node):
                 self.children[action] = ValueNode()
         self.simulator_dict = simulator.save_state_dict()
 
-############################################################################################################################
-
+""
 class ValueMCTS(MCTS):
     def __init__(self, 
                  root_frame,
@@ -594,8 +589,7 @@ class ValueMCTS(MCTS):
             cum_discounted_reward = 0
         return cum_discounted_reward
 
-############################################################################################################################
-
+""
 action_dict = {
         0:"Stay",
         1:"Up",
@@ -678,8 +672,7 @@ class PriorValueNode(Node):
         for a, n in zip(actions, noise):
             self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
 
-############################################################################################################################
-
+""
 class PolicyValueMCTS(MCTS):
     def __init__(self, 
                  root_frame,
@@ -891,9 +884,8 @@ class PolicyValueMCTS(MCTS):
         else:
             cum_discounted_reward = 0
         return cum_discounted_reward
-    
-############################################################################################################################
 
+""
 class PVNode(PriorValueNode):
     def __init__(self, prior=0., weight=0.):
         super().__init__(prior)
@@ -935,8 +927,7 @@ class PVNode(PriorValueNode):
         for i,a in enumerate(actions):
             self.children[a].weight = weights[i]
 
-############################################################################################################################
-
+""
 class PV_MCTS(PolicyValueMCTS):
     def __init__(self, 
              root_frame,
@@ -968,7 +959,7 @@ class PV_MCTS(PolicyValueMCTS):
             ("ucb method not recognized, should be one of: ", possible_ucb_methods)
         self.ucb_method = ucb_method
         
-    def run(self, num_simulations, mode="simulate", dir_noise=False, dirichlet_alpha=1.0, exploration_fraction=0.25, default_Q=0):
+    def run(self, num_simulations, mode="simulate", dir_noise=False, dirichlet_alpha=1.0, exploration_fraction=0.25, default_Q=1):
         """
         Runs num_simulations searches starting from the root node corresponding to the internal
         state of the simulator given during initialization.
