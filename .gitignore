@@ -1,3 +1,4 @@
 *.ipynb_checkpoints
 __pycache__
 save_dir
+.DS_Store

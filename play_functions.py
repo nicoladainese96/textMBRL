@@ -2,8 +2,12 @@
 import mcts
 import utils
 import torch
+import torch.nn.functional as F
 import numpy as np
 from matplotlib import pyplot as plt
+from torch import multiprocessing as mp
+import random
+
 ""
 def show_root_summary(root, discount):
     """
@@ -1326,3 +1330,258 @@ def play_rollout_policy_value_net_softQ_v2(
 
 
     return total_reward, frame_lst, reward_lst, done_lst, action_lst, torch.cat(best_action_lst, axis=0), probs_lst
+
+def PV_MCTS_process_pipes(
+    worker_end,
+    frame, 
+    env, 
+    valid_actions, 
+    ucb_C, 
+    discount, 
+    max_actions, 
+    pv_net,
+    num_simulations,
+    dir_noise, 
+    dirichlet_alpha, 
+    exploration_fraction,
+    ucb_method="AlphaGo",
+    mode="predict",
+    debug_render=False
+):
+    """
+    Execute single-threaded PV-MCTS step starting from 'frame' and communicate the root's children's Q-values
+    and visit counts to the master process through a pipe.
+    """
+    tree = mcts.PV_MCTS(
+                         frame, 
+                         env, 
+                         valid_actions, 
+                         ucb_C, 
+                         discount, 
+                         max_actions, 
+                         pv_net,
+                         render=debug_render, 
+                         ucb_method=ucb_method
+                         )
+    
+    root, info = tree.run(num_simulations, 
+                          mode=mode, 
+                          dir_noise=dir_noise, 
+                          dirichlet_alpha=dirichlet_alpha, 
+                          exploration_fraction=exploration_fraction
+                         )
+    # get Q values and visit counts at the end of the run and send them to the master process
+    Qs = root.get_Q_values(discount).cpu().numpy()
+    Ns = root.get_children_visit_counts()
+    print("Qs: ", Qs)
+    print("Ns: ", Ns)
+    worker_end.send((Qs, Ns))
+    
+def hop_pv_mcts_step(
+    frame, 
+    env, 
+    valid_actions, 
+    ucb_C, 
+    discount, 
+    max_actions, 
+    pv_net,
+    num_simulations, 
+    num_trees,
+    temperature=0.0,
+    dir_noise=True, 
+    dirichlet_alpha=1., 
+    exploration_fraction=0.25,
+    ucb_method="AlphaGo",
+    mode="predict",
+    debug_render=False, 
+):
+    """
+    Executes one step of Hindsight Optimization Policy&Value MCTS.
+    
+    Hindsight Optimization estimates Q values of many determinizations of a stochastic process through a 
+    deterministic (in terms of transitions of the environment) planning algorithm in order to find an 
+    approximation of the real Q values.  
+    
+    Returns the mean Q values and visit counts, obtained by averaging those quantities along 'num_trees' 
+    parallel simulations.
+    """
+    
+    #pv_net.share_memory() # not sure it's needed here (should be called in the main function)
+    
+    # Init num_trees pair of pipes
+    master_ends, worker_ends = zip(*[mp.Pipe() for _ in range(num_trees)])
+    
+    workers = []
+    for worker_id, (master_end, worker_end) in enumerate(zip(master_ends, worker_ends)):
+        p = mp.Process(target=PV_MCTS_process_pipes,
+                       args=(
+                            worker_end,
+                            frame, 
+                            env, 
+                            valid_actions, 
+                            ucb_C, 
+                            discount, 
+                            max_actions, 
+                            pv_net,
+                            num_simulations,
+                            dir_noise, 
+                            dirichlet_alpha, 
+                            exploration_fraction,
+                            ucb_method,
+                            mode,
+                            debug_render,
+                       )
+                      )
+        p.start()
+        workers.append(p)
+    
+    # Now that the workers have been started we need to get results from each pipe before joining the processes
+    results = [master_end.recv() for master_end in master_ends]
+    
+    # Make sure all processes are closed before proceeding
+    for p in workers:
+        p.join()
+        
+    # Separate Qs and Ns and make 2 arrays of shape (num_trees, n_actions)
+    Qs_realizations = np.concatenate([r[0].reshape(1,-1) for r in results])
+    if debug_render:
+        print("Qs_realizations: \n", Qs_realizations)
+    
+    Ns_realizations = np.concatenate([r[1].reshape(1,-1) for r in results])
+    if debug_render:
+        print("Ns_realizations: \n", Ns_realizations)
+    
+    mean_Qs = Qs_realizations.mean(axis=0) # average among different trees / realizations
+    mean_Ns = Ns_realizations.mean(axis=0)
+    
+    return mean_Qs, mean_Ns
+
+def softmax_Q(Qs, T):
+    """
+    Samples an action from the softmax probability obtained from the Q values and a temperature parameter.
+    Returns both the action and the probability mass function over the actions.
+    """
+    Qs = torch.tensor(Qs)
+    if T > 0:
+        probs = F.softmax(Qs/T, dim=0)
+    elif T==0:
+        probs = torch.zeros(len(Qs)) 
+        a = torch.argmax(Qs)
+        probs[a] = 1.
+
+    sampled_action = torch.multinomial(probs, 1).item()
+    return sampled_action, probs.cpu().numpy()
+
+def play_rollout_pv_net_hop_mcts(
+    episode_length,
+    object_ids,
+    env, 
+    ucb_C, 
+    discount, 
+    max_actions, 
+    pv_net,
+    num_simulations, 
+    num_trees,
+    temperature=0.0,
+    dir_noise=True, 
+    dirichlet_alpha=1., 
+    exploration_fraction=0.25,
+    ucb_method="p-UCT-AlphaGo",
+    mode="predict",
+    render=False,
+    debug_render=False,
+):
+    """
+    Plays a rolllout with a policy and value MCTS with the hindsight optimization technique 
+    to deal with stochastic transitions. 
+    
+    If mode='simulate', leaf node's evaluation is done with MC rollout evaluations, if mode='predict', 
+    the value network is used instead.
+    
+    Samples the next action based on the Q-values of the root node's children (averaged among 'num_trees' 
+    realizations of the tree search, each with independently sampled transitions) and returns both the MCTS policy 
+    and the list of sampled actions as possible targets with which to train the policy network.
+    
+    Formula used for MCTS policy (softmax of Q-values with temperature):
+    
+    p(a) = exp{Q(a)/T} / \sum_b exp{Q(b)/T}
+
+    Note: the softmax function with T=0 is the argmax function.
+    
+    This function is also mixing a prior sampled from a Dirichlet distribution (with parameters dirichlet_alpha for each 
+    possible action) to the prior of the root node's children, in order to increase exploration at the base of the tree 
+    even in cases where the policy is almost deterministic. The mixture coefficient between the prior and the categorical 
+    distribution sampled by the Dirichelt distribution is the exploration_fraction, such that:
+    
+    p(a) = (1-exploration_fraction) Prior(a) + exploration_fraction Dir(a)
+    
+    """
+    
+    A = len(env.env.action_space)
+    action_dict = {
+        0:"Stay",
+        1:"Up",
+        2:"Down",
+        3:"Left",
+        4:"Right"
+    }
+    frame, valid_actions = env.reset()
+    if render:
+        env.render()
+    total_reward = 0
+    done = False
+    new_root = None
+    # variables used for training of value net
+    frame_lst = [frame]
+    reward_lst = []
+    done_lst = []
+    action_lst = []
+    probs_lst = []
+    
+    for i in range(episode_length):
+        
+        Qs, Ns = hop_pv_mcts_step(
+            frame, 
+            env, 
+            valid_actions, 
+            ucb_C, 
+            discount, 
+            max_actions, 
+            pv_net,
+            num_simulations, 
+            num_trees,
+            temperature,
+            dir_noise, 
+            dirichlet_alpha, 
+            exploration_fraction,
+            ucb_method=ucb_method,
+            mode=mode,
+            debug_render=debug_render
+        )
+
+        action, probs = softmax_Q(Qs, temperature)
+        action_lst.append(action)
+        probs_lst.append(probs)
+        
+        if render:
+            print("Action selected from HOP-MCTS: ", action, "({})".format(action_dict[action]))
+        frame, valid_actions, reward, done = env.step(action)
+        
+        frame_lst.append(frame)
+        reward_lst.append(reward)
+        done_lst.append(done)
+        
+        if render:
+            env.render()
+        total_reward += reward
+        
+        if done:
+            frame, valid_actions = env.reset()
+            if render:
+                print("\nNew episode begins.")
+                env.render()
+            done = False
+            new_root = None
+
+
+    return total_reward, frame_lst, reward_lst, done_lst, action_lst, probs_lst

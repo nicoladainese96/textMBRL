@@ -11,7 +11,7 @@ import time
 from rtfm import featurizer as X
 from my_networks import *
 
-verbose = True
+verbose = False
 vprint = print if verbose else lambda *args, **kwargs: None
 
 if torch.cuda.is_available():
