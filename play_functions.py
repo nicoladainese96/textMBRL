@@ -1,5 +1,6 @@
 # Custom modules
 import mcts
+from stochastic_mcts import StochasticPVMCTS
 import utils
 import torch
 import torch.nn.functional as F
@@ -1578,6 +1579,121 @@ def play_rollout_pv_net_hop_mcts(
         if done:
             frame, valid_actions = env.reset()
             if render:
+                print("\nNew episode begins.")
+                env.render()
+            done = False
+            new_root = None
+
+
+    return total_reward, frame_lst, reward_lst, done_lst, action_lst, probs_lst
+
+
+def play_rollout_pv_net_stochastic(
+    pv_net,
+    env,
+    episode_length,
+    ucb_C,
+    discount,
+    num_simulations,
+    dirichlet_alpha, 
+    exploration_fraction,
+    temperature,
+    render=False,
+    debug_render=False,
+):
+    """
+    Plays a rolllout with a policy and value MCTS. 
+    Starts building the tree from the sub-tree of the root's child node that has been selected at the previous step.
+    
+    If mode='simulate', it's identical to a policy MCTS with MC rollout evaluations, if mode='predict', the value network 
+    is used to estimate the value of the leaf nodes (instead of a MC rollout).
+    
+    Samples the next action based on the Q-values of the root node's children and returns both the MCTS policy and the list of 
+    sampled actions as possible targets with which to train the policy network.
+    
+    Formula used for MCTS policy (softmax of Q-values with temperature):
+    
+    p(a) = exp{Q(a)/T} / \sum_b exp{Q(b)/T}
+
+    Note: the softmax function with T=0 is the argmax function.
+    
+    This function is also mixing a prior sampled from a Dirichlet distribution (with parameters dirichlet_alpha for each 
+    possible action) to the prior of the root node's children, in order to increase exploration at the base of the tree 
+    even in cases where the policy is almost deterministic. The mixture coefficient between the prior and the categorical 
+    distribution sampled by the Dirichelt distribution is the exploration_fraction, such that:
+    
+    p(a) = (1-exploration_fraction) Prior(a) + exploration_fraction Dir(a)
+    
+    Version v2: same as v1, but it's not re-using the old sub-tree in the new mcts step. 
+    This has be done if we want to use the deterministic PV-MCTS as a baseline for the stochastic environment.
+    As it is, this function it's not convinient to use in the deterministic setup (altough it can be useful to 
+    study the search tree properties from scratch at every step).
+    """
+    
+    A = len(env.env.action_space)
+    action_dict = {
+        0:"Stay",
+        1:"Up",
+        2:"Down",
+        3:"Left",
+        4:"Right"
+    }
+    frame, valid_actions = env.reset()
+    if render:
+        env.render()
+    total_reward = 0
+    done = False
+    new_root = None
+    # variables used for training of value net
+    frame_lst = [frame]
+    reward_lst = []
+    done_lst = []
+    action_lst = []
+    probs_lst = []
+    
+    for i in range(episode_length):
+        tree = StochasticPVMCTS(
+            frame, 
+            env, 
+            valid_actions, 
+            ucb_C, 
+            discount, 
+            pv_net,
+            root=new_root,
+            render=debug_render, 
+            )
+        
+        root, info = tree.run(num_simulations,
+                              dir_noise=True, 
+                              dirichlet_alpha=dirichlet_alpha, 
+                              exploration_fraction=exploration_fraction
+                             )
+        
+        action, probs = root.softmax_Q(temperature)
+        action_lst.append(action)
+        probs_lst.append(probs)
+        
+        if render:
+            print("Action selected from MCTS: ", action, "({})".format(action_dict[action]))
+
+        frame, valid_actions, reward, done = env.step(action)
+        
+        frame_lst.append(frame)
+        reward_lst.append(reward)
+        done_lst.append(done)
+        
+        if render:
+            env.render()
+        total_reward += reward
+        
+        new_root = tree.get_subtree(action, frame)
+        if new_root is not None and render:
+            # amount of simulations that we are going to re-use in the next step:
+            print("new_root.visit_count: ", new_root.visit_count) 
+        if done:
+            frame, valid_actions = env.reset()
+            if render:
+                print("Final reward: ", reward)
                 print("\nNew episode begins.")
                 env.render()
             done = False
