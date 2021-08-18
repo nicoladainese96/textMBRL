@@ -1373,10 +1373,11 @@ def PV_MCTS_process_pipes(
     # get Q values and visit counts at the end of the run and send them to the master process
     Qs = root.get_Q_values(discount).cpu().numpy()
     Ns = root.get_children_visit_counts()
-    print("Qs: ", Qs)
-    print("Ns: ", Ns)
+    if debug_render:
+        print("Qs: ", Qs)
+        print("Ns: ", Ns)
     worker_end.send((Qs, Ns))
-    
+
 def hop_pv_mcts_step(
     frame, 
     env, 

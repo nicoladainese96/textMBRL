@@ -135,6 +135,9 @@ def main():
         pv_net = mcts.FixedDynamicsPVNet_v3(gym_env, **network_params).to(device)
         target_net = mcts.FixedDynamicsPVNet_v3(gym_env, **network_params).to(device)
         
+    # Share memory of the 'actor' model, i.e. pv_net; it might not even be necessary at this point
+    pv_net.share_memory()
+    
     # Init target_net with same parameters of value_net
     for trg_params, params in zip(target_net.parameters(), pv_net.parameters()):
         trg_params.data.copy_(params.data)
@@ -144,7 +147,7 @@ def main():
     gamma = 10**(-2/(args.n_episodes-1)) # decrease lr of 2 order of magnitude during training
     gamma_T = 10**(-1/(args.n_episodes-1)) # decrease lr of 2 order of magnitude during training
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
-    replay_buffer = train.PolicyValueReplayBuffer(args.memory_size, args.discount)
+    replay_buffer = train.HopPolicyValueReplayBuffer(args.memory_size, args.discount)
     
     # Experiment ID
     if args.ID is None:
@@ -155,7 +158,6 @@ def main():
     
     total_rewards = []
     entropies = []
-    accuracies = []
     losses = []
     policy_losses = []
     value_losses = []
@@ -166,22 +168,6 @@ def main():
         mode = "predict"
         target_net.eval() # just to make sure
         pv_net.eval()
-        results = train.play_rollout_pv_net_hop_mcts(
-            pv_net,
-            game_simulator,
-            args.episode_length,
-            args.ucb_C,
-            args.discount,
-            args.max_actions,
-            args.num_simulations,
-            args.num_trees,
-            object_ids,
-            args.dirichlet_alpha,
-            args.exploration_fraction,
-            temperature,
-            mode=mode,
-            ucb_method=ucb_method
-            )
         
         results = train.play_rollout_pv_net_hop_mcts(
             args.episode_length,
@@ -198,8 +184,8 @@ def main():
             exploration_fraction=args.exploration_fraction,
             ucb_method=ucb_method
             )
-        total_reward, frame_lst, reward_lst, done_lst, action_lst, best_action_lst, probs_lst = results
-        replay_buffer.store_episode(frame_lst, reward_lst, done_lst, action_lst, best_action_lst, probs_lst)
+        total_reward, frame_lst, reward_lst, done_lst, action_lst, probs_lst = results
+        replay_buffer.store_episode(frame_lst, reward_lst, done_lst, action_lst, probs_lst)
         total_rewards.append(total_reward)
         rollout_time = (time.time()-t0)/60
         if (i+1)%10==0:
@@ -209,16 +195,15 @@ def main():
         if i >= args.batch_size:
             ### Update ###
             target_net.eval() # just to make sure
-            frames, target_values, actions, best_actions, probs = replay_buffer.get_batch(
+            frames, target_values, actions, probs = replay_buffer.get_batch(
                 args.batch_size, args.n_steps, target_net, device
             )
             pv_net.train()
-            update_results = train.compute_PV_net_update(
+            update_results = train.compute_PV_net_update_v1(
                 pv_net, 
                 frames, 
                 target_values, 
                 actions, 
-                best_actions, 
                 probs,
                 optimizer,
                 args.full_cross_entropy,
@@ -226,7 +211,7 @@ def main():
                 args.entropy_weight,
                 args.discrete_support_values
             )
-            loss, entropy, accuracy, policy_loss, value_loss = update_results
+            loss, entropy, policy_loss, value_loss = update_results
             scheduler.step()
             temperature = gamma_T*temperature
 
@@ -236,17 +221,15 @@ def main():
 
             if (i+1)%10==0:
                 print("Loss: %.4f - Policy loss: %.4f - Value loss: %.4f"%(loss, policy_loss, value_loss))
-                print("Entropy: %.4f - Accuracy: %.1f %%"%(entropy, accuracy*100))
+                print("Entropy: %.4f"%entropy)
             losses.append(loss)
             entropies.append(entropy)
-            accuracies.append(accuracy)
             policy_losses.append(policy_loss)
             value_losses.append(value_loss)
 
         if (i+1)%50==0:
             # Print update
             print("\nAverage reward over last 50 rollouts: %.2f\n"%(np.mean(total_rewards[-50:])))
-            print("Percentage of optimal actions: %.1f %%"%(np.mean(accuracies[-50:])*100))
 
         if (i+1)%args.checkpoint_period==0:
             # Plot histograms of value stats and save checkpoint
@@ -266,7 +249,6 @@ def main():
                 policy_losses=policy_losses,
                 value_losses=value_losses,
                 total_rewards=total_rewards,
-                accuracies=accuracies,
                 entropies=entropies, 
                 optimizer=optimizer,
             )

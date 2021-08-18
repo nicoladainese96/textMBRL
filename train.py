@@ -246,9 +246,63 @@ def compute_PV_net_update(
     
     return loss.item(), entropy.item(), accuracy, policy_loss.item(), value_loss.item()
 
+def compute_PV_net_update_v1(
+    pv_net,
+    frames,
+    target_values,
+    target_actions,
+    target_probs,
+    optimizer,
+    full_cross_entropy=False,
+    entropy_bonus=False,
+    h=1e-2,
+    discrete_support_values=True
+):
+    """
+    Does not receive best actions anymore and does not compute the accuracy of the policy.
+    """
+    # Infer correct device from pv_net
+    device = next(pv_net.parameters()).device
+    ### Value loss ###
+    if discrete_support_values:
+        v_logits, probs = pv_net(frames, return_v_logits=True) # (B*T, A)
+        discrete_targets = mcts.scalar_to_support_v1(target_values.view(-1,1), pv_net.support_size).squeeze()
+        value_loss = (-discrete_targets * F.log_softmax(v_logits, dim=1)).mean()
 
-############################################################################################################################
+    else:
+        values, probs = pv_net(frames)
+        value_loss = loss = F.mse_loss(values, target_values)
+        
+    ### Policy loss ###
+    probs = torch.clamp(probs, 1e-9, 1 - 1e-9)
+    log_probs = torch.log(probs)
+        
+    if full_cross_entropy:
+        target_probs = target_probs.to(device)
+        mask = (target_probs==0)
+        policy_loss = -(target_probs*log_probs).sum(axis=1).mean() # cross-entropy averaged over batch dim
+    else:
+        target_actions = target_actions.to(device)
+        policy_loss = F.nll_loss(log_probs, target_actions) # cross-entropy averaged over batch dim
+    
+    entropy = -(probs*log_probs).sum(axis=1).mean()
+    # DEBUG
+    #print("entropy_bonus: ", entropy_bonus)
+    #print("entropy: ", entropy)
+    #print("policy_loss (before bonus): ", policy_loss)
+    if entropy_bonus:
+        policy_loss = policy_loss - h*entropy # negative entropy so that when minimizing entropy increases
+    #print("policy_loss (after bonus): ", policy_loss)
+    
+    ### Update ###
+    loss = value_loss + policy_loss
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    
+    return loss.item(), entropy.item(), policy_loss.item(), value_loss.item()
 
+""
 def plot_value_stats(value_net, target_net, rb, batch_size, n_steps, device, n_peaks=10):
     # Value vs target hist on a batch
     target_net.eval()
@@ -406,8 +460,7 @@ def plot_value_stats_v2(value_net, target_net, rb, batch_size, n_steps, device, 
     plt.tight_layout()
     plt.show()
 
-############################################################################################################################
-
+""
 
 
 # ## Performance tests - obsolete stuff ###
