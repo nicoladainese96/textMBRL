@@ -630,7 +630,7 @@ def plot_total_reward_runs(list_of_exp_dictionaries, optimal_reward_mean, optima
     plt.title("Total reward\n"+title, fontsize=16)
     plt.legend(fontsize=13)
     plt.show()
-    
+
 def plot_total_loss_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.figure(figsize=(12,10))
     for i,d in enumerate(list_of_exp_dictionaries):
@@ -642,7 +642,7 @@ def plot_total_loss_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.title("Total loss\n"+title, fontsize=16)
     plt.legend(fontsize=13)
     plt.show()
-    
+
 def plot_policy_loss_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.figure(figsize=(12,10))
     for i,d in enumerate(list_of_exp_dictionaries):
@@ -654,7 +654,7 @@ def plot_policy_loss_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.title("Policy loss\n"+title, fontsize=16)
     plt.legend(fontsize=13)
     plt.show()
-    
+
 def plot_policy_entropy_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.figure(figsize=(12,10))
     for i,d in enumerate(list_of_exp_dictionaries):
@@ -666,7 +666,7 @@ def plot_policy_entropy_runs(list_of_exp_dictionaries, labels, title, window=100
     plt.title("Policy entropy\n"+title, fontsize=16)
     plt.legend(fontsize=13)
     plt.show()
-    
+
 def plot_value_loss_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.figure(figsize=(12,10))
     for i,d in enumerate(list_of_exp_dictionaries):
@@ -678,7 +678,7 @@ def plot_value_loss_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.title("Value loss\n"+title, fontsize=16)
     plt.legend(fontsize=13)
     plt.show()
-    
+
 def plot_accuracy_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.figure(figsize=(12,10))
     for i,d in enumerate(list_of_exp_dictionaries):
@@ -690,8 +690,8 @@ def plot_accuracy_runs(list_of_exp_dictionaries, labels, title, window=100):
     plt.title("MCTS policy accuracy\n"+title, fontsize=16)
     plt.legend(fontsize=13)
     plt.show()
-    
-    
+
+
 def plot_analysis_runs(list_of_exp_dictionaries, optimal_reward_mean, optimal_reward_std, title, window=100):
     labels = []
     for i,d in enumerate(list_of_exp_dictionaries):
@@ -709,8 +709,8 @@ def plot_analysis_runs(list_of_exp_dictionaries, optimal_reward_mean, optimal_re
     plot_policy_entropy_runs(list_of_exp_dictionaries, labels, title, window)
     plot_value_loss_runs(list_of_exp_dictionaries, labels, title, window)
     plot_accuracy_runs(list_of_exp_dictionaries, labels, title, window)
-    
-    
+
+
 def plot_analysis_runs_v1(list_of_exp_dictionaries, optimal_reward_mean, optimal_reward_std, labels, title, window=100):
     plot_total_reward_runs(list_of_exp_dictionaries, optimal_reward_mean, optimal_reward_std, labels, title, window)
     plot_total_loss_runs(list_of_exp_dictionaries, labels, title, window)
@@ -718,3 +718,27 @@ def plot_analysis_runs_v1(list_of_exp_dictionaries, optimal_reward_mean, optimal
     plot_policy_entropy_runs(list_of_exp_dictionaries, labels, title, window)
     plot_value_loss_runs(list_of_exp_dictionaries, labels, title, window)
     plot_accuracy_runs(list_of_exp_dictionaries, labels, title, window)
+
+
+def plot_analysis_stochastic_runs(list_of_exp_dictionaries, labels, title, window=100):
+    plot_total_reward_stochastic_runs(list_of_exp_dictionaries, labels, title, window)
+    plot_total_loss_runs(list_of_exp_dictionaries, labels, title, window)
+    plot_policy_loss_runs(list_of_exp_dictionaries, labels, title, window)
+    plot_policy_entropy_runs(list_of_exp_dictionaries, labels, title, window)
+    plot_value_loss_runs(list_of_exp_dictionaries, labels, title, window)
+
+
+def plot_total_reward_stochastic_runs(list_of_exp_dictionaries, labels, title, window=100):
+    # Plot reward history of each run together with a legend to identify them and an horizontal line 
+    # (+ a confidence region) for the reward obtained by the optimal policy
+
+    plt.figure(figsize=(12,10))
+    for i,d in enumerate(list_of_exp_dictionaries):
+        total_rewards = d["total_rewards"]
+        average_rewards = np.array([np.mean(total_rewards[i-window:i]) for i in range(window, len(total_rewards))]) 
+        plt.plot(np.arange(len(average_rewards)), average_rewards, label=labels[i])
+    plt.xlabel("Number of optimizer steps", fontsize=16)
+    plt.ylabel("Total reward in 32 steps\n (moving window %s)"%window, fontsize=16)
+    plt.title("Total reward\n"+title, fontsize=16)
+    plt.legend(fontsize=13)
+    plt.show()

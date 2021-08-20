@@ -125,7 +125,7 @@ def main():
     gamma = 10**(-2/(args.n_episodes-1)) # decrease lr of 2 order of magnitude during training
     gamma_T = 10**(-1/(args.n_episodes-1)) # decrease lr of 2 order of magnitude during training
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma)
-    replay_buffer = train.PolicyValueReplayBuffer(args.memory_size, args.discount)
+    replay_buffer = train.HopPolicyValueReplayBuffer(args.memory_size, args.discount)
     
     # Experiment ID
     if args.ID is None:
@@ -167,16 +167,15 @@ def main():
         if i >= args.batch_size:
             ### Update ###
             target_net.eval() # just to make sure
-            frames, target_values, actions, best_actions, probs = replay_buffer.get_batch(
+            frames, target_values, actions, probs = replay_buffer.get_batch(
                 args.batch_size, args.n_steps, target_net, device
             )
             pv_net.train()
-            update_results = train.compute_PV_net_update(
+            update_results = train.compute_PV_net_update_v1(
                 pv_net, 
                 frames, 
                 target_values, 
                 actions, 
-                best_actions, 
                 probs,
                 optimizer,
                 args.full_cross_entropy,
@@ -184,7 +183,7 @@ def main():
                 args.entropy_weight,
                 args.discrete_support_values
             )
-            loss, entropy, accuracy, policy_loss, value_loss = update_results
+            loss, entropy, policy_loss, value_loss = update_results
             scheduler.step()
             temperature = gamma_T*temperature
 
@@ -194,17 +193,15 @@ def main():
 
             if (i+1)%10==0:
                 print("Loss: %.4f - Policy loss: %.4f - Value loss: %.4f"%(loss, policy_loss, value_loss))
-                print("Entropy: %.4f - Accuracy: %.1f %%"%(entropy, accuracy*100))
+                print("Entropy: %.4f"%entropy)
             losses.append(loss)
             entropies.append(entropy)
-            accuracies.append(accuracy)
             policy_losses.append(policy_loss)
             value_losses.append(value_loss)
 
         if (i+1)%50==0:
             # Print update
             print("\nAverage reward over last 50 rollouts: %.2f\n"%(np.mean(total_rewards[-50:])))
-            print("Percentage of optimal actions: %.1f %%"%(np.mean(accuracies[-50:])*100))
 
         if (i+1)%args.checkpoint_period==0:
             # Plot histograms of value stats and save checkpoint
@@ -217,14 +214,12 @@ def main():
             d = dict(
                 episodes_played=i,
                 training_params=training_params,
-                object_ids=object_ids,
                 pv_net=pv_net,
                 target=target_net,
                 losses=losses,
                 policy_losses=policy_losses,
                 value_losses=value_losses,
                 total_rewards=total_rewards,
-                accuracies=accuracies,
                 entropies=entropies, 
                 optimizer=optimizer,
             )
@@ -240,7 +235,7 @@ def main():
     end = time.time()
     elapsed = (end-start)/60
     print("Run took %.1f min."%elapsed)
-   
+
 
 
 if __name__ == "__main__":
